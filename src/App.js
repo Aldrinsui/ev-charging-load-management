@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── REAL DATASET: Based on ACN-Data (Caltech EV Charging) patterns ───────────
-const GEMINI_API_KEY = "AIzaSyB5DPzXloEgpYlkdKEO78vhXDHLpSHxyQA";
+const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_KEY;
 // Stations modeled after real Caltech ACN dataset locations/load profiles
 const STATIONS = [
   { id: "CL-01", name: "Caltech Lot A", lat: 34.1377, lng: -118.1253, capacity: 32, zone: "Academic" },
@@ -101,20 +101,21 @@ Respond ONLY in this JSON format (no markdown, no extra text):
 Provide load mitigation recommendations.`;
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    });
-    const data = await response.json();
-    const text = data.content?.map((c) => c.text || "").join("");
-    const clean = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(clean);
+    const response = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 1000 },
+    }),
+  }
+);
+const data = await response.json();
+const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+const clean = text.replace(/```json|```/g, "").trim();
+return JSON.parse(clean);
   } catch (e) {
     return {
       summary: "Grid operating under elevated load conditions. Immediate action recommended.",
@@ -658,7 +659,7 @@ export default function EVChargingDashboard() {
             <div style={{ ...s.card, marginBottom: "16px" }}>
               <div style={s.sectionTitle}>LLM Decision Support Engine</div>
               <div style={{ color: "#4a6080", fontSize: "12px", marginBottom: "16px" }}>
-                Uses Claude (claude-sonnet-4-20250514) to analyze predicted load trends and generate actionable mitigation strategies.
+                Uses Google Gemini 2.0 Flash to analyze predicted load trends and generate actionable mitigation strategies.
               </div>
               <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
                 <button
@@ -719,7 +720,7 @@ export default function EVChargingDashboard() {
       {/* FOOTER */}
       <div style={{ borderTop: "1px solid #1e2d45", padding: "12px 24px", display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#2a3a52", flexWrap: "wrap", gap: "8px" }}>
         <span>Dataset: ACN-Data (Caltech EV Charging) patterns · 8 stations · 15-min resolution</span>
-        <span>Model: LSTM-sim spatiotemporal · Peak detection: threshold-based · LLM: Claude claude-sonnet-4-20250514</span>
+        <span>Model: LSTM-sim spatiotemporal · Peak detection: threshold-based · LLM: Google Gemini 2.0 Flash</span>
         <span>Framework: React · Real-time sim step: T+{simStep}</span>
       </div>
     </div>
