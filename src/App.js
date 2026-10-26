@@ -61,35 +61,26 @@ function detectRisk(stations) {
   });
 }
 
-const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_KEY;
+const API_BASE = process.env.REACT_APP_API_URL !== undefined
+  ? process.env.REACT_APP_API_URL
+  : (process.env.NODE_ENV === "production" ? "" : "http://localhost:5001");
 
 async function getLLMRecommendations(snapshot, peakHour, avgUtil) {
-  const critical = snapshot.filter(s => s.risk === "critical").map(s => `${s.id}(${(s.utilization*100).toFixed(0)}%)`);
-  const high = snapshot.filter(s => s.risk === "high").map(s => `${s.id}(${(s.utilization*100).toFixed(0)}%)`);
-
-  const prompt = `You are an EV Charging Grid Operations AI for the Chengalpattu–Tambaram NH45 corridor in Tamil Nadu, India.
-Analyze charging load data and provide exactly 3 actionable recommendations.
-Respond ONLY in this JSON format (no markdown, no extra text):
-{"recommendations":[{"action":"string","priority":"critical|high|medium","impact":"string","stations":["id1","id2"]},...],"summary":"one sentence grid status"}
-
-Current grid state:
-- Corridor: Chengalpattu to Tambaram (NH45), Tamil Nadu
-- Time: ${new Date().toLocaleTimeString()}
-- Average utilization: ${(avgUtil*100).toFixed(1)}%
-- Peak hour forecast: ${peakHour}:00
-- Critical stations (>88%): ${critical.join(", ") || "none"}
-- High-risk stations (72-88%): ${high.join(", ") || "none"}
-- Station details: ${snapshot.map(s => `${s.id}:${s.name}@${s.location}=${(s.utilization*100).toFixed(0)}%`).join(", ")}`;
-
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-      { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 1000 } }) }
-    );
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
+    const res = await fetch(`${API_BASE}/api/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stations: snapshot.map(s => ({
+          id: s.id, name: s.name, location: s.location,
+          utilization: s.utilization, risk: s.risk,
+        })),
+        avgUtil,
+        peakHour,
+      }),
+    });
+    if (!res.ok) throw new Error(`backend returned ${res.status}`);
+    return await res.json();
   } catch {
     return {
       summary: "Evening peak demand surge detected across Tambaram–Guduvanchery stretch. Load redistribution recommended.",
